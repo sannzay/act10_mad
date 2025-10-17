@@ -1,122 +1,281 @@
 import 'package:flutter/material.dart';
+import 'database_helper.dart';
 
-void main() {
+final dbHelper = DatabaseHelper.instance;
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dbHelper.init();
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'SQFlite Demo',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: const MyHomePage(),
     );
   }
 }
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+  const MyHomePage({super.key});
   @override
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _ageController = TextEditingController();
+  final TextEditingController _idController = TextEditingController();
+  List<Map<String, dynamic>> _rows = [];
+  String _status = '';
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _refreshRows();
+  }
+
+  Future<void> _refreshRows() async {
+    final rows = await dbHelper.queryAllRows();
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _rows = rows;
     });
+  }
+
+  void _setStatus(String s) {
+    setState(() => _status = s);
+    debugPrint(s);
+  }
+
+  Future<void> _insert() async {
+    final name = _nameController.text.trim();
+    final age = int.tryParse(_ageController.text.trim() ?? '');
+    if (name.isEmpty || age == null) {
+      _setStatus('Please provide a valid name and age to insert.');
+      return;
+    }
+    final id = await dbHelper.insert({
+      DatabaseHelper.columnName: name,
+      DatabaseHelper.columnAge: age,
+    });
+    _setStatus('Inserted row id: $id');
+    _nameController.clear();
+    _ageController.clear();
+    await _refreshRows();
+  }
+
+  Future<void> _queryAll() async {
+    await _refreshRows();
+    _setStatus('Queried all rows (${_rows.length})');
+  }
+
+  Future<void> _queryById() async {
+    final id = int.tryParse(_idController.text.trim() ?? '');
+    if (id == null) {
+      _setStatus('Please enter a valid ID to query.');
+      return;
+    }
+    final row = await dbHelper.queryById(id);
+    if (row == null) {
+      _setStatus('No row found with id $id.');
+    } else {
+      _setStatus('Found: ${row.toString()}');
+    }
+  }
+
+  Future<void> _update() async {
+    final id = int.tryParse(_idController.text.trim() ?? '');
+    final name = _nameController.text.trim();
+    final age = int.tryParse(_ageController.text.trim() ?? '');
+    if (id == null || name.isEmpty || age == null) {
+      _setStatus('Please provide valid id, name and age to update.');
+      return;
+    }
+    final rowsAffected = await dbHelper.update({
+      DatabaseHelper.columnId: id,
+      DatabaseHelper.columnName: name,
+      DatabaseHelper.columnAge: age,
+    });
+    _setStatus('Updated $rowsAffected row(s)');
+    await _refreshRows();
+  }
+
+  Future<void> _delete() async {
+    final id = int.tryParse(_idController.text.trim() ?? '');
+    if (id == null) {
+      _setStatus('Please enter a valid ID to delete.');
+      return;
+    }
+    final rowsDeleted = await dbHelper.delete(id);
+    _setStatus('Deleted $rowsDeleted row(s) with id $id');
+    await _refreshRows();
+  }
+
+  Future<void> _deleteAll() async {
+    final count = await dbHelper.deleteAll();
+    _setStatus('Deleted all rows ($count).');
+    await _refreshRows();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('sqflite demo'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                border: Border.all(width: 1.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Name',
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 100,
+                        child: TextField(
+                          controller: _ageController,
+                          decoration: const InputDecoration(
+                            labelText: 'Age',
+                            isDense: true,
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _idController,
+                          decoration: const InputDecoration(
+                            labelText: 'ID (for query/update/delete)',
+                            isDense: true,
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ElevatedButton(onPressed: _insert, child: const Text('Insert')),
+                ElevatedButton(onPressed: _queryAll, child: const Text('Query All')),
+                ElevatedButton(onPressed: _queryById, child: const Text('Query by ID')),
+                ElevatedButton(onPressed: _update, child: const Text('Update')),
+                ElevatedButton(onPressed: _delete, child: const Text('Delete by ID')),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: () async {
+                    // confirm destructive action
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete all records?'),
+                        content: const Text('This will remove all rows from the table.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      await _deleteAll();
+                    }
+                  },
+                  child: const Text('Delete All'),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text('Status: $_status', style: const TextStyle(fontSize: 14)),
+            ),
+
+            const SizedBox(height: 12),
+
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Rows (${_rows.length}):', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+
+            const SizedBox(height: 8),
+
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  border: Border.all(width: 1, color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: _rows.isEmpty
+                    ? const Center(child: Text('No rows yet. Insert some records.'))
+                    : ListView.separated(
+                        itemCount: _rows.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final row = _rows[index];
+                          return ListTile(
+                            leading: CircleAvatar(child: Text(row[DatabaseHelper.columnId].toString())),
+                            title: Text(row[DatabaseHelper.columnName].toString()),
+                            subtitle: Text('Age: ${row[DatabaseHelper.columnAge]}'),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () async {
+                                final id = row[DatabaseHelper.columnId] as int;
+                                await dbHelper.delete(id);
+                                _setStatus('Deleted row id $id');
+                                await _refreshRows();
+                              },
+                            ),
+                          );
+                        },
+                      ),
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
